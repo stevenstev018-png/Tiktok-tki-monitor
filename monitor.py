@@ -17,6 +17,14 @@ HEADERS = {
     "X-RapidAPI-Host": "tiktok-scraper7.p.rapidapi.com"
 }
 
+KEYWORDS = [
+    "viral indonesia 2025",
+    "trending indonesia",
+    "fyp indonesia viral",
+    "viral tiktok indo",
+    "lagu viral indonesia"
+]
+
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML", "disable_web_page_preview": False}
@@ -29,30 +37,26 @@ def send_telegram(message):
     except Exception as e:
         print(f"❌ Error: {e}")
 
-def get_fyp_videos():
-    """Ambil video trending FYP Indonesia"""
-    url = "https://tiktok-scraper7.p.rapidapi.com/feed/list"
-    params = {"region": "ID", "count": "50"}
+def search_videos(keyword):
+    url = "https://tiktok-scraper7.p.rapidapi.com/feed/search"
+    params = {"keywords": keyword, "region": "ID", "count": "30", "cursor": "0", "publish_time": "1", "sort_type": "1"}
     try:
         response = requests.get(url, headers=HEADERS, params=params, timeout=15)
         if response.status_code == 200:
-            data = response.json()
-            return data.get("data", {}).get("videos", [])
-        print(f"❌ FYP API error: {response.status_code}")
+            return response.json().get("data", {}).get("videos", [])
+        print(f"❌ Search error {response.status_code}")
         return []
     except Exception as e:
-        print(f"❌ FYP exception: {e}")
+        print(f"❌ Exception: {e}")
         return []
 
 def get_music_videos(music_id):
-    """Ambil semua video yang pakai sound tertentu"""
     url = "https://tiktok-scraper7.p.rapidapi.com/music/posts"
-    params = {"music_id": music_id, "count": "20", "cursor": "0"}
+    params = {"music_id": music_id, "count": "30", "cursor": "0"}
     try:
         response = requests.get(url, headers=HEADERS, params=params, timeout=15)
         if response.status_code == 200:
-            data = response.json()
-            return data.get("data", {}).get("videos", [])
+            return response.json().get("data", {}).get("videos", [])
         return []
     except:
         return []
@@ -65,7 +69,6 @@ def format_views(num):
     return str(num)
 
 def is_recent(create_time):
-    """Cek apakah video dibuat dalam 24 jam terakhir"""
     try:
         age_hours = (datetime.now() - datetime.fromtimestamp(create_time)).total_seconds() / 3600
         return age_hours <= MAX_HOURS
@@ -74,108 +77,93 @@ def is_recent(create_time):
 
 def run_monitor():
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
-    print(f"🔍 Mulai monitoring sound viral: {now}")
+    print(f"🔍 Mulai monitoring: {now}")
     send_telegram(f"🤖 <b>TKI Sound Monitor aktif</b>\n📅 {now}\n🎵 Mencari sound viral Indonesia...")
 
-    # Step 1: Ambil video FYP Indonesia
-    print("📱 Mengambil video FYP Indonesia...")
-    fyp_videos = get_fyp_videos()
-    print(f"   Dapat {len(fyp_videos)} video dari FYP")
+    # Step 1: Kumpulkan video dari search
+    all_videos = []
+    checked_ids = set()
 
-    if not fyp_videos:
-        send_telegram(f"⚠️ Tidak bisa ambil data FYP. Coba lagi nanti.")
-        return
+    for keyword in KEYWORDS:
+        print(f"🔎 Search: '{keyword}'")
+        videos = search_videos(keyword)
+        for v in videos:
+            vid_id = v.get("video_id", "")
+            if vid_id and vid_id not in checked_ids:
+                checked_ids.add(vid_id)
+                all_videos.append(v)
+        time.sleep(2)
 
-    # Step 2: Kelompokkan berdasarkan sound/music
+    print(f"📊 Total video terkumpul: {len(all_videos)}")
+
+    # Step 2: Kelompokkan berdasarkan music/sound
     sound_groups = defaultdict(lambda: {"music_title": "", "music_author": "", "music_id": "", "videos": []})
 
-    for video in fyp_videos:
+    for video in all_videos:
         music = video.get("music_info", {})
         if not music:
             continue
 
         music_id = str(music.get("id", ""))
-        music_title = music.get("title", "Unknown Sound")
-        music_author = music.get("author", "Unknown")
+        if not music_id:
+            continue
+
         play_count = video.get("play_count", 0)
         create_time = video.get("create_time", 0)
 
-        if not music_id or play_count < MIN_VIEWS:
+        if play_count < MIN_VIEWS or not is_recent(create_time):
             continue
 
-        if not is_recent(create_time):
-            continue
-
-        author = video.get("author", {})
-        username = author.get("unique_id", "unknown")
+        username = video.get("author", {}).get("unique_id", "unknown")
         video_id = video.get("video_id", "")
-        video_url = f"https://www.tiktok.com/@{username}/video/{video_id}"
 
-        sound_groups[music_id]["music_title"] = music_title
-        sound_groups[music_id]["music_author"] = music_author
+        sound_groups[music_id]["music_title"] = music.get("title", "Unknown Sound")
+        sound_groups[music_id]["music_author"] = music.get("author", "Unknown")
         sound_groups[music_id]["music_id"] = music_id
         sound_groups[music_id]["videos"].append({
             "username": username,
             "views": play_count,
-            "url": video_url,
-            "video_id": video_id
+            "url": f"https://www.tiktok.com/@{username}/video/{video_id}"
         })
 
-    # Step 3: Filter sound yang dipakai 3+ video
-    trending_sounds = {k: v for k, v in sound_groups.items() if len(v["videos"]) >= MIN_VIDEOS_PER_SOUND}
+    # Step 3: Untuk sound yang muncul, cek lebih banyak videonya
+    promising_sounds = {k: v for k, v in sound_groups.items() if len(v["videos"]) >= 1}
+    print(f"🎵 {len(promising_sounds)} sound ditemukan, cek lebih dalam...")
 
-    print(f"🎵 Ditemukan {len(trending_sounds)} sound trending (3+ video 100k+ views)")
+    trending_sounds = {}
 
-    if not trending_sounds:
-        # Coba cek lebih dalam via music API
-        print("🔍 FYP kurang, cek via search...")
-        
-        # Kumpulkan semua music_id dari FYP
-        all_music_ids = defaultdict(lambda: {"music_title": "", "music_author": "", "videos": []})
-        for video in fyp_videos:
-            music = video.get("music_info", {})
-            if not music:
-                continue
-            music_id = str(music.get("id", ""))
-            if not music_id:
-                continue
-            all_music_ids[music_id]["music_title"] = music.get("title", "Unknown")
-            all_music_ids[music_id]["music_author"] = music.get("author", "Unknown")
+    for music_id, data in list(promising_sounds.items())[:10]:
+        print(f"   Cek sound: {data['music_title']}")
+        more_videos = get_music_videos(music_id)
 
-        # Cek top 5 music_id yang paling sering muncul
-        top_music = sorted(all_music_ids.items(), key=lambda x: len(x[1]["videos"]), reverse=True)[:5]
+        viral_vids = list(data["videos"])  # mulai dari yang sudah ada
+        existing_ids = {v["url"] for v in viral_vids}
 
-        for music_id, info in top_music:
-            print(f"   Cek sound: {info['music_title']}")
-            music_videos = get_music_videos(music_id)
-            
-            viral_vids = []
-            for v in music_videos:
-                play_count = v.get("play_count", 0)
-                create_time = v.get("create_time", 0)
-                if play_count >= MIN_VIEWS and is_recent(create_time):
-                    username = v.get("author", {}).get("unique_id", "unknown")
-                    video_id = v.get("video_id", "")
-                    viral_vids.append({
-                        "username": username,
-                        "views": play_count,
-                        "url": f"https://www.tiktok.com/@{username}/video/{video_id}"
-                    })
-            
-            if len(viral_vids) >= MIN_VIDEOS_PER_SOUND:
-                trending_sounds[music_id] = {
-                    "music_title": info["music_title"],
-                    "music_author": info["music_author"],
-                    "videos": viral_vids
-                }
-            time.sleep(1)
+        for v in more_videos:
+            play_count = v.get("play_count", 0)
+            create_time = v.get("create_time", 0)
+            username = v.get("author", {}).get("unique_id", "unknown")
+            video_id = v.get("video_id", "")
+            url = f"https://www.tiktok.com/@{username}/video/{video_id}"
+
+            if play_count >= MIN_VIEWS and is_recent(create_time) and url not in existing_ids:
+                viral_vids.append({"username": username, "views": play_count, "url": url})
+                existing_ids.add(url)
+
+        if len(viral_vids) >= MIN_VIDEOS_PER_SOUND:
+            trending_sounds[music_id] = {
+                "music_title": data["music_title"],
+                "music_author": data["music_author"],
+                "videos": sorted(viral_vids, key=lambda x: x["views"], reverse=True)
+            }
+
+        time.sleep(1)
 
     # Step 4: Kirim alert
+    print(f"🔥 {len(trending_sounds)} sound trending ditemukan!")
+
     if trending_sounds:
-        header = f"🔥 <b>SOUND VIRAL INDONESIA DITEMUKAN!</b>\n"
-        header += f"📊 {len(trending_sounds)} sound trending\n"
-        header += f"⏰ {now}\n"
-        send_telegram(header)
+        send_telegram(f"🔥 <b>SOUND VIRAL INDONESIA!</b>\n📊 {len(trending_sounds)} sound trending\n⏰ {now}")
 
         for sound_id, data in list(trending_sounds.items())[:3]:
             total_views = sum(v["views"] for v in data["videos"])
@@ -189,9 +177,9 @@ def run_monitor():
             send_telegram(msg)
             time.sleep(1)
     else:
-        send_telegram(f"✅ <b>Monitoring selesai</b>\n⏰ {now}\n📊 Belum ada sound dengan 3+ video 100k+ views\n🔄 Cek berikutnya jam 7 pagi/malam")
+        send_telegram(f"✅ <b>Monitoring selesai</b>\n⏰ {now}\n📊 Belum ada sound dengan {MIN_VIDEOS_PER_SOUND}+ video {format_views(MIN_VIEWS)}+ views\n🔄 Cek berikutnya jam 7 pagi/malam")
 
-    print(f"✅ Selesai. {len(trending_sounds)} sound viral ditemukan.")
+    print(f"✅ Selesai. {len(trending_sounds)} sound viral.")
 
 def should_run():
     now_wib = datetime.utcnow() + timedelta(hours=7)
@@ -207,12 +195,4 @@ if __name__ == "__main__":
         last_run_date = None
         last_run_hour = None
         while True:
-            now_wib = datetime.utcnow() + timedelta(hours=7)
-            if should_run():
-                if last_run_date != now_wib.date() or last_run_hour != now_wib.hour:
-                    run_monitor()
-                    last_run_date = now_wib.date()
-                    last_run_hour = now_wib.hour
-            else:
-                print(f"💤 [{now_wib.strftime('%d/%m %H:%M')} WIB] Menunggu...")
-            time.sleep(300)
+            now_
