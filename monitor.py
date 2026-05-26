@@ -8,8 +8,8 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY", "")
 
-TKI_MIN_VIEWS = 50000
-TKI_MAX_HOURS = 10
+VIRAL_MIN_VIEWS = 100000
+VIRAL_MAX_HOURS = 12
 TAG_MIN_VIEWS = 100000
 TAG_MIN_VIDEOS = 3
 TAG_MAX_HOURS = 24
@@ -19,15 +19,19 @@ HEADERS = {
     "X-RapidAPI-Host": "tiktok-scraper7.p.rapidapi.com"
 }
 
-TKI_KEYWORDS = [
-    "TKI Taiwan", "PMI Taiwan", "Taiwan viral",
-    "viral Taiwan Indonesia", "TKI 2025",
-    "kerja Taiwan", "buruh migran Taiwan"
+VIRAL_KEYWORDS = [
+    "viral indonesia",
+    "trending indonesia",
+    "viral tiktok indonesia",
+    "fyp indonesia",
+    "viral hari ini"
 ]
 
 TREND_KEYWORDS = [
-    "viral indonesia 2025", "trending indonesia",
-    "fyp indonesia viral", "viral tiktok indo",
+    "viral indonesia 2025",
+    "trending indonesia",
+    "fyp indonesia viral",
+    "viral tiktok indo",
     "lagu viral indonesia"
 ]
 
@@ -77,11 +81,11 @@ def extract_hashtags(text):
     words = text.split()
     return [w.lower().strip("#.,!?") for w in words if w.startswith("#") and len(w) > 2]
 
-def run_tki_monitor():
-    print("\n🇹🇼 Monitor TKI Taiwan...")
+def run_viral_monitor():
+    print("\n🇮🇩 Monitor Video Viral Indonesia...")
     viral_videos = []
     checked_ids = set()
-    for keyword in TKI_KEYWORDS:
+    for keyword in VIRAL_KEYWORDS:
         print(f"  🔎 '{keyword}'")
         for video in search_videos(keyword):
             video_id = video.get("video_id", "")
@@ -90,7 +94,7 @@ def run_tki_monitor():
             checked_ids.add(video_id)
             play_count = video.get("play_count", 0)
             age_hours = get_age_hours(video.get("create_time", 0))
-            if play_count >= TKI_MIN_VIEWS and age_hours <= TKI_MAX_HOURS:
+            if play_count >= VIRAL_MIN_VIEWS and age_hours <= VIRAL_MAX_HOURS:
                 username = video.get("author", {}).get("unique_id", "unknown")
                 viral_videos.append({
                     "username": username,
@@ -143,18 +147,24 @@ def run_hashtag_monitor():
 def run_monitor():
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
     print(f"\n🚀 Monitoring: {now}")
-    send_telegram(f"🤖 <b>TKI Monitor aktif</b>\n📅 {now}\n🔍 Cek video viral + hashtag trending...")
+    send_telegram(f"🤖 <b>Indo Viral Monitor aktif</b>\n📅 {now}\n🔍 Cek video viral + hashtag trending...")
 
-    # PART 1: TKI TAIWAN
-    tki_videos = run_tki_monitor()
-    if tki_videos:
-        send_telegram(f"🇹🇼 <b>VIDEO VIRAL TKI TAIWAN!</b>\n📊 {len(tki_videos)} video\n⏰ {now}")
-        for i, v in enumerate(tki_videos[:5]):
-            msg = f"🎵 <b>Video #{i+1}</b>\n👤 @{v['username']}\n📺 Views: <b>{format_views(v['views'])}</b>\n⏱ Umur: {v['age_hours']} jam\n🔍 {v['keyword']}\n📝 {v['desc']}\n🔗 {v['url']}"
+    # PART 1: VIDEO VIRAL INDONESIA
+    viral_videos = run_viral_monitor()
+    if viral_videos:
+        send_telegram(f"🇮🇩 <b>VIDEO VIRAL INDONESIA 1M+!</b>\n📊 {len(viral_videos)} video\n⏰ {now}")
+        for i, v in enumerate(viral_videos[:5]):
+            msg = f"🎵 <b>Video #{i+1}</b>\n"
+            msg += f"👤 @{v['username']}\n"
+            msg += f"📺 Views: <b>{format_views(v['views'])}</b>\n"
+            msg += f"⏱ Umur: {v['age_hours']} jam\n"
+            msg += f"🔍 {v['keyword']}\n"
+            msg += f"📝 {v['desc']}\n"
+            msg += f"🔗 {v['url']}"
             send_telegram(msg)
             time.sleep(1)
     else:
-        send_telegram(f"🇹🇼 <b>TKI Taiwan</b>\n✅ Tidak ada video viral baru\n(threshold: {format_views(TKI_MIN_VIEWS)} views dalam {TKI_MAX_HOURS} jam)")
+        send_telegram(f"🇮🇩 <b>Video Viral Indonesia</b>\n✅ Tidak ada video 1M+ views dalam 12 jam")
 
     time.sleep(3)
 
@@ -164,7 +174,10 @@ def run_monitor():
         send_telegram(f"🔥 <b>HASHTAG TRENDING INDONESIA!</b>\n📊 {len(trending)} hashtag viral\n⏰ {now}")
         for tag, data in list(trending.items())[:5]:
             videos = sorted(data["videos"], key=lambda x: x["views"], reverse=True)
-            msg = f"#️⃣ <b>#{tag}</b>\n📹 {len(videos)} video\n👁 Total: <b>{format_views(data['total_views'])}</b>\n\n<b>Top videos:</b>\n"
+            msg = f"#️⃣ <b>#{tag}</b>\n"
+            msg += f"📹 {len(videos)} video\n"
+            msg += f"👁 Total: <b>{format_views(data['total_views'])}</b>\n\n"
+            msg += "<b>Top videos:</b>\n"
             for i, v in enumerate(videos[:5]):
                 msg += f"{i+1}. @{v['username']} — {format_views(v['views'])} views\n{v['url']}\n"
             send_telegram(msg)
@@ -179,7 +192,7 @@ def should_run():
     return (now_wib.hour == 7 or now_wib.hour == 19) and now_wib.minute < 5
 
 if __name__ == "__main__":
-    print("🚀 TKI + Trend Monitor dimulai!")
+    print("🚀 Indo Viral Monitor dimulai!")
     mode = os.environ.get("RUN_MODE", "scheduled")
     if mode == "test":
         run_monitor()
