@@ -1,16 +1,17 @@
+Buka GitHub → `monitor.py` → pensil ✏️ → hapus semua → paste ini:
+
+```python
 import os
 import requests
 from datetime import datetime, timedelta
 import time
-from collections import defaultdict
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 RAPIDAPI_KEY = os.environ.get("RAPIDAPI_KEY", "")
 
-MIN_VIEWS = 100000
-MAX_HOURS = 10
-MIN_VIDEOS_PER_SOUND = 1
+MIN_VIEWS = 30000
+MAX_HOURS = 8
 
 HEADERS = {
     "X-RapidAPI-Key": RAPIDAPI_KEY,
@@ -18,11 +19,14 @@ HEADERS = {
 }
 
 KEYWORDS = [
-    "lagu viral tiktok 2025",
-    "sound viral tiktok indonesia",
-    "lagu trending tiktok indo",
-    "musik viral indonesia tiktok",
-    "tiktok sound viral indo"
+    "TKI Taiwan",
+    "PMI Taiwan",
+    "Taiwan viral",
+    "viral Taiwan Indonesia",
+    "TKI 2025",
+    "kerja Taiwan",
+    "buruh migran Taiwan",
+    "Indonesia Taiwan"
 ]
 
 def send_telegram(message):
@@ -71,10 +75,9 @@ def format_views(num):
 def run_monitor():
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
     print(f"\n🚀 Monitoring: {now}")
-    send_telegram(f"🤖 <b>Sound Viral Monitor aktif</b>\n📅 {now}\n🎵 Mencari sound/lagu viral Indonesia...")
+    send_telegram(f"🤖 <b>TKI Taiwan Monitor aktif</b>\n📅 {now}\n🔍 Mencari video viral TKI Taiwan...")
 
-    # Kumpulkan semua video
-    all_videos = []
+    viral_videos = []
     checked_ids = set()
 
     for keyword in KEYWORDS:
@@ -84,104 +87,58 @@ def run_monitor():
             if video_id in checked_ids:
                 continue
             checked_ids.add(video_id)
-            all_videos.append(video)
+
+            play_count = video.get("play_count", 0)
+            age_hours = get_age_hours(video.get("create_time", 0))
+
+            if play_count >= MIN_VIEWS and age_hours <= MAX_HOURS:
+                username = video.get("author", {}).get("unique_id", "unknown")
+                desc = video.get("title", "")[:100]
+                viral_videos.append({
+                    "username": username,
+                    "views": play_count,
+                    "age_hours": round(age_hours, 1),
+                    "desc": desc,
+                    "url": f"https://www.tiktok.com/@{username}/video/{video_id}",
+                    "keyword": keyword
+                })
+                print(f"  🔥 @{username} — {format_views(play_count)} views")
         time.sleep(2)
 
-    print(f"  📊 Total video: {len(all_videos)}")
-
-    # Kelompokkan berdasarkan sound/musik
-    sound_groups = defaultdict(lambda: {
-        "title": "",
-        "author": "",
-        "videos": []
-    })
-
-    for video in all_videos:
-        play_count = video.get("play_count", 0)
-        age_hours = get_age_hours(video.get("create_time", 0))
-
-        if play_count < MIN_VIEWS or age_hours > MAX_HOURS:
-            continue
-
-        # Ambil info musik
-        music = video.get("music_info", {})
-        if not music:
-            # Coba field lain
-            music = video.get("music", {})
-        
-        music_id = str(music.get("id", "") or music.get("music_id", ""))
-        music_title = music.get("title", "") or music.get("name", "")
-        music_author = music.get("author", "") or music.get("artist", "")
-
-        if not music_id or not music_title:
-            continue
-
-        username = video.get("author", {}).get("unique_id", "unknown")
-        video_id = video.get("video_id", "")
-
-        sound_groups[music_id]["title"] = music_title
-        sound_groups[music_id]["author"] = music_author
-        sound_groups[music_id]["videos"].append({
-            "username": username,
-            "views": play_count,
-            "age_hours": round(age_hours, 1),
-            "url": f"https://www.tiktok.com/@{username}/video/{video_id}"
-        })
-
-    # Filter sound yang muncul di 3+ video
-    trending_sounds = {
-        k: v for k, v in sound_groups.items()
-        if len(v["videos"]) >= MIN_VIDEOS_PER_SOUND
-    }
-
-    # Sort by jumlah video terbanyak
-    trending_sounds = dict(sorted(
-        trending_sounds.items(),
-        key=lambda x: len(x[1]["videos"]),
-        reverse=True
-    ))
-
-    print(f"  🎵 {len(trending_sounds)} sound viral ditemukan!")
-
-    if trending_sounds:
+    if viral_videos:
+        viral_videos = sorted(viral_videos, key=lambda x: x["views"], reverse=True)
         send_telegram(
-            f"🔥 <b>SOUND VIRAL INDONESIA!</b>\n"
-            f"🎵 {len(trending_sounds)} lagu trending hari ini\n"
+            f"🔥 <b>VIDEO VIRAL TKI TAIWAN!</b>\n"
+            f"📊 {len(viral_videos)} video ditemukan\n"
             f"⏰ {now}"
         )
-
-        for sound_id, data in list(trending_sounds.items())[:5]:
-            videos = sorted(data["videos"], key=lambda x: x["views"], reverse=True)
-            total_views = sum(v["views"] for v in videos)
-
-            msg = f"🎵 <b>{data['title']}</b>\n"
-            msg += f"👤 Artist: {data['author']}\n"
-            msg += f"📹 Dipakai {len(videos)} video viral\n"
-            msg += f"👁 Total views: <b>{format_views(total_views)}</b>\n\n"
-            msg += "<b>Contoh video yang pakai sound ini:</b>\n"
-
-            for i, v in enumerate(videos[:5]):
-                msg += f"{i+1}. @{v['username']} — {format_views(v['views'])} views ({v['age_hours']} jam)\n"
-                msg += f"🔗 {v['url']}\n"
-
+        for i, v in enumerate(viral_videos[:5]):
+            msg = f"🎥 <b>Video #{i+1}</b>\n"
+            msg += f"👤 @{v['username']}\n"
+            msg += f"📺 Views: <b>{format_views(v['views'])}</b>\n"
+            msg += f"⏱ Umur: {v['age_hours']} jam\n"
+            msg += f"🔍 Keyword: {v['keyword']}\n"
+            msg += f"📝 {v['desc']}\n"
+            msg += f"🔗 {v['url']}"
             send_telegram(msg)
             time.sleep(1)
     else:
         send_telegram(
             f"✅ <b>Monitoring selesai</b>\n"
             f"⏰ {now}\n"
-            f"📊 Belum ada sound dengan {MIN_VIDEOS_PER_SOUND}+ video {format_views(MIN_VIEWS)}+ views dalam {MAX_HOURS} jam\n"
+            f"📊 Tidak ada video viral baru\n"
+            f"(threshold: {format_views(MIN_VIEWS)} views dalam {MAX_HOURS} jam)\n"
             f"🔄 Cek berikutnya jam 7 pagi/malam"
         )
 
-    print(f"✅ Selesai. {len(trending_sounds)} sound viral.")
+    print(f"✅ Selesai. {len(viral_videos)} video viral.")
 
 def should_run():
     now_wib = datetime.utcnow() + timedelta(hours=7)
     return (now_wib.hour == 7 or now_wib.hour == 19) and now_wib.minute < 5
 
 if __name__ == "__main__":
-    print("🚀 Sound Viral Monitor dimulai!")
+    print("🚀 TKI Taiwan Monitor dimulai!")
     mode = os.environ.get("RUN_MODE", "scheduled")
     if mode == "test":
         run_monitor()
@@ -199,3 +156,6 @@ if __name__ == "__main__":
             else:
                 print(f"💤 [{now_wib.strftime('%d/%m %H:%M')} WIB] Menunggu...")
             time.sleep(300)
+```
+
+Tap **"Commit changes"** → test di Railway ubah `RUN_MODE` ke `test` → cek Telegram! 🚀
