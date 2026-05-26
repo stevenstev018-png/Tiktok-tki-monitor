@@ -153,6 +153,3 @@ if __name__ == "__main__":
             else:
                 print(f"💤 [{now_wib.strftime('%d/%m %H:%M')} WIB] Menunggu...")
             time.sleep(300)
-```
-
-Tap **"Commit changes"** → test di Railway ubah `RUN_MODE` ke `test` → cek Telegram! 🚀
