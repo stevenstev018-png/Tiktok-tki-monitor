@@ -1,6 +1,3 @@
-Buka GitHub → `monitor.py` → pensil ✏️ → hapus semua → paste ini:
-
-```python
 import os
 import requests
 from datetime import datetime, timedelta
